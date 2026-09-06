@@ -3,7 +3,7 @@
   type="webgl"
   id="webgl"
   class="webgl"
-  bindtouchstart="onTouchStart"
-  bindtouchmove="onTouchMove"
-  bindtouchend="onTouchEnd"
-  bindtouchcancel="onTouchEnd"></canvas>
+  catchtouchstart="onTouchStart"
+  catchtouchmove="onTouchMove"
+  catchtouchend="onTouchEnd"
+  catchtouchcancel="onTouchEnd"></canvas>

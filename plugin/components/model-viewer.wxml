@@ -1,9 +1,10 @@
 <!--plugin/components/model-viewer.wxml-->
+<!--触摸事件用 catch：手势期间阻止冒泡，避免带动宿主页面滚动-->
 <canvas
   type="webgl"
   id="webgl"
   class="webgl"
-  bindtouchstart="onTouchStart"
-  bindtouchmove="onTouchMove"
-  bindtouchend="onTouchEnd"
-  bindtouchcancel="onTouchEnd"></canvas>
+  catchtouchstart="onTouchStart"
+  catchtouchmove="onTouchMove"
+  catchtouchend="onTouchEnd"
+  catchtouchcancel="onTouchEnd"></canvas>
