@@ -20,7 +20,6 @@ class ThreeViewer {
     this._onError = opts.onError || null
     this._autoplay = opts.autoplay !== false
     this._running = false
-    this._fallback = null
     this._mixer = null
     this._gesture = null
 
@@ -54,18 +53,6 @@ class ThreeViewer {
     this._target = new THREE.Vector3(0, 0, 0)
     this._orbit = { radius: 3, theta: Math.PI / 4, phi: Math.PI / 2.4 }
     this.updateCamera()
-
-    // 兜底立方体：模型加载完成前/失败时显示
-    this._fallback = new THREE.Mesh(
-      new THREE.BoxGeometry(1.4, 1.4, 1.4),
-      new THREE.MeshStandardMaterial({ color: 0x4f7cff, roughness: 0.35, metalness: 0.25 })
-    )
-    const edges = new THREE.LineSegments(
-      new THREE.EdgesGeometry(this._fallback.geometry),
-      new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 })
-    )
-    this._fallback.add(edges)
-    scene.add(this._fallback)
 
     this._clock = new THREE.Clock()
     this.resume()
@@ -114,7 +101,6 @@ class ThreeViewer {
     const loop = () => {
       if (!this._running) return
       const dt = this._clock.getDelta()
-      if (this._fallback) this._fallback.rotation.y += 0.011
       if (this._mixer) this._mixer.update(dt)
       this._renderer.render(this._scene, this._camera)
       this._canvas.requestAnimationFrame(loop)
@@ -125,7 +111,6 @@ class ThreeViewer {
   destroy() {
     this._running = false
     this._mixer = null
-    this._fallback = null
     this._renderer.dispose()
   }
 
@@ -145,10 +130,6 @@ class ThreeViewer {
     model.scale.setScalar(scale)
     model.position.copy(center).multiplyScalar(-scale)
 
-    if (this._fallback) {
-      this._scene.remove(this._fallback)
-      this._fallback = null
-    }
     this._scene.add(model)
 
     this._mixer = null
