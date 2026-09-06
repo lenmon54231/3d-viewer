@@ -107,6 +107,40 @@ function installShims() {
   if (typeof g.Image === 'undefined') {
     g.Image = function Image() { return createWxImage() }
   }
+  // TextDecoder 垫片：iOS/安卓真机的 JS 引擎没有这个全局，而 GLTFLoader.parse
+  // 里是无守卫的 new TextDecoder（r160），没有它 glb 解析直接抛 ReferenceError
+  if (typeof g.TextDecoder === 'undefined') {
+    g.TextDecoder = function TextDecoder() {
+      this.decode = function(input) {
+        const u8 = input instanceof Uint8Array ? input : new Uint8Array(input || [])
+        let out = ''
+        let i = 0
+        // 跳过 UTF-8 BOM
+        if (u8.length >= 3 && u8[0] === 0xef && u8[1] === 0xbb && u8[2] === 0xbf) i = 3
+        while (i < u8.length) {
+          const b0 = u8[i]
+          if (b0 < 0x80) {
+            out += String.fromCharCode(b0)
+            i += 1
+          } else if (b0 < 0xc0) {
+            i += 1 // 无效的延续字节，跳过
+          } else if (b0 < 0xe0) {
+            out += String.fromCharCode(((b0 & 0x1f) << 6) | (u8[i + 1] & 0x3f))
+            i += 2
+          } else if (b0 < 0xf0) {
+            out += String.fromCharCode(((b0 & 0x0f) << 12) | ((u8[i + 1] & 0x3f) << 6) | (u8[i + 2] & 0x3f))
+            i += 3
+          } else {
+            const cp = ((b0 & 0x07) << 18) | ((u8[i + 1] & 0x3f) << 12) | ((u8[i + 2] & 0x3f) << 6) | (u8[i + 3] & 0x3f)
+            const c = cp - 0x10000
+            out += String.fromCharCode(0xd800 + (c >> 10), 0xdc00 + (c & 0x3ff))
+            i += 4
+          }
+        }
+        return out
+      }
+    }
+  }
 }
 
 // wx Image 事件桥接：three r160 的 ImageLoader 用 addEventListener('load'/'error')，
