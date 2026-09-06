@@ -1,6 +1,6 @@
 Page({
   data: {
-    modelUrl: 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/models/gltf/Parrot.glb'
+    modelUrl: 'https://limengtupian.oss-cn-beijing.aliyuncs.com/a-model/rolex.glb'
   },
 
   onViewerLoad(e) {

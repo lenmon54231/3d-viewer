@@ -9,6 +9,13 @@
 let boundCanvas = null
 let shimsInstalled = false
 
+// 轻量 Blob 实现：仅供 vendor（GLTFLoader）内嵌贴图路径使用，
+// 数据挂在 _parts 上由 urlShim.createObjectURL 消费
+function WxBlob(parts, options) {
+  this._parts = parts || []
+  this.type = (options && options.type) || ''
+}
+
 function getWindowInfo() {
   return wx.getWindowInfo ? wx.getWindowInfo() : wx.getSystemInfoSync()
 }
@@ -45,21 +52,18 @@ function installShims() {
 
   const win = getWindowInfo()
   const g = globalThis
-
-  // Blob/URL 垫片：GLTFLoader 加载 glb 内嵌贴图时会 new Blob + URL.createObjectURL，
-  // 小程序没有这两个 API，这里把 WxBlob 转成 data:base64 URI（wx 的 Image 支持）。
-  // 若宿主环境已有原生 Blob/URL（如 Node），则沿用原生的。
+  // Blob/URL 垫片：GLTFLoader 加载 glb 内嵌贴图时会 new Blob + URL.createObjectURL。
+  // vendor 文件构建时已把 Blob/URL 标识符 define 到 __wxThreeShims 上，
+  // 全局是否原生存在都不影响 vendor 行为（统一 data:base64 URI）。
   if (typeof g.Blob === 'undefined') {
-    g.Blob = function WxBlob(parts, options) {
-      this._parts = parts || []
-      this.type = (options && options.type) || ''
-    }
+    g.Blob = WxBlob
   }
   const urlShim = {
     createObjectURL: function(blob) {
       const data = blob && blob._parts && blob._parts[0]
       const u8 = data instanceof Uint8Array ? data : new Uint8Array(data || new ArrayBuffer(0))
-      return 'data:' + ((blob && blob.type) || 'application/octet-stream') + ';base64,' + arrayBufferToBase64(u8)
+      const uri = 'data:' + ((blob && blob.type) || 'application/octet-stream') + ';base64,' + arrayBufferToBase64(u8)
+      return uri
     },
     revokeObjectURL: function() {}
   }
@@ -71,13 +75,13 @@ function installShims() {
   }
 
   // GLTFLoader 内部是 `const URL = self.URL || self.webkitURL` 取的，
-  // 所以 window/self 垫片上也要有 URL（用上面解析后的 g.URL 保持一致）
+  // 所以 window/self 垫片上也挂 URL（固定用 urlShim，与 __wxThreeShims 一致）
   const windowShim = {
     devicePixelRatio: win.pixelRatio || 1,
     innerWidth: win.windowWidth,
     innerHeight: win.windowHeight,
-    URL: g.URL,
-    webkitURL: g.URL,
+    URL: urlShim,
+    webkitURL: urlShim,
     addEventListener() {},
     removeEventListener() {},
     dispatchEvent() {}
@@ -140,6 +144,22 @@ function installShims() {
         return out
       }
     }
+  }
+
+  // 供 vendor 文件重定向的垫片入口。小程序会把每个 JS 模块包进壳函数，
+  // 并用参数把 window/document/self/URL 等遮蔽成 undefined——全局垫片在
+  // 模块内部不可见。因此 three.js / gltf-loader.js 构建时用 esbuild
+  // --define 把这些标识符改写到 __wxThreeShims 上（它不在遮蔽名单内）。
+  // 注意：所有入口一律用本适配层的实现。开发者工具的 appservice 是
+  // Chromium 环境，存在原生 self/document/URL/Blob——若透传原生实现，
+  // vendor 拿 WxBlob 调原生 createObjectURL 会因类型不符报
+  // "Overload resolution failed"，且真机与工具行为不一致。
+  g.__wxThreeShims = {
+    window: windowShim,
+    self: windowShim,
+    document: documentShim,
+    URL: urlShim,
+    Blob: WxBlob
   }
 }
 

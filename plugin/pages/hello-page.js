@@ -2,7 +2,7 @@
 // 插件内置的全屏演示页（复用 three-viewer 核心与公开组件同一套逻辑）
 const { ThreeViewer } = require('../libs/three-viewer.js')
 
-const DEFAULT_MODEL_URL = 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/models/gltf/Parrot.glb'
+const DEFAULT_MODEL_URL = 'https://limengtupian.oss-cn-beijing.aliyuncs.com/a-model/rolex.glb'
 
 Page({
   data: {},
