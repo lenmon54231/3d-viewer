@@ -22,6 +22,8 @@ class ThreeViewer {
     this._running = false
     this._mixer = null
     this._gesture = null
+    this._velocity = { theta: 0, phi: 0 }
+    this._lastMoveT = 0
 
     const win = adapter.getWindowInfo()
     const renderer = adapter.createRenderer(canvas).renderer
@@ -31,23 +33,31 @@ class ThreeViewer {
     renderer.setPixelRatio(win.pixelRatio || 1)
     renderer.setSize(width, height, false)
     renderer.toneMapping = THREE.ACESFilmicToneMapping
+    renderer.toneMappingExposure = 1.2
 
     const scene = new THREE.Scene()
     scene.background = new THREE.Color(opts.background || 0x1a1c22)
     this._scene = scene
 
-    // PBR 环境光照：金属/粗糙材质没有环境贴图会发黑
+    // 环境反射（IBL）：金属/光滑材质真实感的来源
     try {
       const pmrem = new THREE.PMREMGenerator(renderer)
       scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
       pmrem.dispose()
     } catch (e) {
       console.warn('three-viewer: 环境贴图生成失败，回退基础光照', e && e.message)
-      scene.add(new THREE.AmbientLight(0xffffff, 0.8))
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x444455, 1.0))
     }
-    const dirLight = new THREE.DirectionalLight(0xffffff, 1.2)
-    dirLight.position.set(3, 4, 2)
-    scene.add(dirLight)
+    // 产品级三点布光：主光 + 补光 + 轮廓光（rim 让金属边缘出现高光轮廓）
+    const keyLight = new THREE.DirectionalLight(0xffffff, 2.2)
+    keyLight.position.set(4, 6, 4)
+    scene.add(keyLight)
+    const fillLight = new THREE.DirectionalLight(0xffffff, 0.6)
+    fillLight.position.set(-5, 2, 3)
+    scene.add(fillLight)
+    const rimLight = new THREE.DirectionalLight(0xffffff, 1.6)
+    rimLight.position.set(-2, 5, -6)
+    scene.add(rimLight)
 
     this._camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 100)
     this._target = new THREE.Vector3(0, 0, 0)
@@ -102,6 +112,18 @@ class ThreeViewer {
       if (!this._running) return
       const dt = this._clock.getDelta()
       if (this._mixer) this._mixer.update(dt)
+      // 惯性阻尼：松手后按指数衰减继续滑行，抓住即停
+      if (!this._gesture) {
+        const v = this._velocity
+        if (Math.abs(v.theta) > 0.00005 || Math.abs(v.phi) > 0.00005) {
+          this._orbit.theta += v.theta
+          this._orbit.phi = clamp(this._orbit.phi + v.phi, 0.15, Math.PI - 0.15)
+          const decay = Math.exp(-dt * 3.5)
+          v.theta *= decay
+          v.phi *= decay
+          this.updateCamera()
+        }
+      }
       this._renderer.render(this._scene, this._camera)
       this._canvas.requestAnimationFrame(loop)
     }
@@ -130,6 +152,13 @@ class ThreeViewer {
     model.scale.setScalar(scale)
     model.position.copy(center).multiplyScalar(-scale)
 
+    // 金属材质真实感的关键：增强环境反射强度
+    model.traverse((obj) => {
+      if (obj.isMesh && obj.material && obj.material.isMeshStandardMaterial) {
+        obj.material.envMapIntensity = 1.4
+      }
+    })
+
     this._scene.add(model)
 
     this._mixer = null
@@ -142,12 +171,16 @@ class ThreeViewer {
     }
   }
 
-  // ---- 触摸轨道手势：单指旋转、双指缩放 ----
+  // ---- 触摸轨道手势：单指旋转（带惯性阻尼）、双指缩放 ----
   handleTouch(phase, e) {
     if (phase === 'start') {
+      // 抓住即停：清掉惯性
+      this._velocity.theta = 0
+      this._velocity.phi = 0
       if (e.touches.length === 1) {
         this._gesture = 'rotate'
         this._last = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+        this._lastMoveT = Date.now()
       } else if (e.touches.length >= 2) {
         this._gesture = 'pinch'
         this._lastPinch = this._touchDist(e.touches)
@@ -157,9 +190,18 @@ class ThreeViewer {
         const dx = e.touches[0].clientX - this._last.x
         const dy = e.touches[0].clientY - this._last.y
         this._last = { x: e.touches[0].clientX, y: e.touches[0].clientY }
-        this._orbit.theta -= dx * 0.008
-        this._orbit.phi = clamp(this._orbit.phi - dy * 0.008, 0.15, Math.PI - 0.15)
+        const dTheta = -dx * 0.008
+        const dPhi = clamp(-dy * 0.008, -0.3, 0.3)
+        this._orbit.theta += dTheta
+        this._orbit.phi = clamp(this._orbit.phi + dPhi, 0.15, Math.PI - 0.15)
         this.updateCamera()
+        // 按事件间隔归一为每帧角速度，指数平滑，作为松手后的惯性初速
+        const now = Date.now()
+        const dtm = Math.max(16, now - this._lastMoveT)
+        this._lastMoveT = now
+        const frame = 16 / dtm
+        this._velocity.theta = 0.7 * this._velocity.theta + 0.3 * dTheta * frame
+        this._velocity.phi = 0.7 * this._velocity.phi + 0.3 * dPhi * frame
       } else if (this._gesture === 'pinch' && e.touches.length >= 2) {
         const d = this._touchDist(e.touches)
         if (this._lastPinch > 0 && d > 0) {
@@ -171,9 +213,17 @@ class ThreeViewer {
     } else if (phase === 'end') {
       if (e.touches.length === 0) {
         this._gesture = null
+        // 松手前已停顿超过 100ms 视为静止，不给惯性
+        if (Date.now() - this._lastMoveT > 100) {
+          this._velocity.theta = 0
+          this._velocity.phi = 0
+        }
       } else if (e.touches.length === 1) {
         this._gesture = 'rotate'
+        this._velocity.theta = 0
+        this._velocity.phi = 0
         this._last = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+        this._lastMoveT = Date.now()
       } else {
         this._lastPinch = this._touchDist(e.touches)
       }
