@@ -75,13 +75,18 @@ function installShims() {
   }
 
   // GLTFLoader 内部是 `const URL = self.URL || self.webkitURL` 取的，
-  // 所以 window/self 垫片上也挂 URL（固定用 urlShim，与 __wxThreeShims 一致）
+  // 所以 window/self 垫片上也挂 URL（固定用 urlShim，与 __wxThreeShims 一致）。
+  // requestAnimationFrame/cancelAnimationFrame：three 的 WebGLRenderer.dispose
+  // 会经内部 Animation.stop() 调 window.cancelAnimationFrame（r160），
+  // 用 setTimeout 实现兜底即可（真正的渲染循环走 canvas.requestAnimationFrame）
   const windowShim = {
     devicePixelRatio: win.pixelRatio || 1,
     innerWidth: win.windowWidth,
     innerHeight: win.windowHeight,
     URL: urlShim,
     webkitURL: urlShim,
+    requestAnimationFrame: function(cb) { return setTimeout(cb, 16) },
+    cancelAnimationFrame: function(id) { clearTimeout(id) },
     addEventListener() {},
     removeEventListener() {},
     dispatchEvent() {}
