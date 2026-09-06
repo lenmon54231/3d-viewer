@@ -5,14 +5,22 @@
   display: flex;
   flex-direction: column;
   background: #101216;
-  padding-top: env(safe-area-inset-top);
-  box-sizing: border-box;
 }
 
+.viewer {
+  flex: 1;
+  width: 100vw;
+  display: block;
+}
+
+/* 底部模型切换栏：避开 iPhone 底部安全区（Home 指示条） */
 .tabs {
   display: flex;
   gap: 16rpx;
-  padding: 20rpx 24rpx 16rpx;
+  justify-content: center;
+  padding: 16rpx 24rpx;
+  padding-bottom: calc(16rpx + env(safe-area-inset-bottom));
+  background: rgba(16, 18, 22, 0.9);
 }
 
 .tab {
@@ -27,10 +35,4 @@
 .tab-active {
   color: #ffffff;
   background: #33445f;
-}
-
-.viewer {
-  flex: 1;
-  width: 100vw;
-  display: block;
 }

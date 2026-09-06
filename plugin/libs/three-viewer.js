@@ -69,26 +69,33 @@ class ThreeViewer {
   }
 
   load(url) {
+    // 加载令牌：快速连续切换时，只有最后一次请求的结果会被应用
+    this._loadToken = (this._loadToken || 0) + 1
+    const token = this._loadToken
     wx.showLoading({ title: '加载模型' })
     wx.request({
       url: url,
       responseType: 'arraybuffer',
       success: (res) => {
+        if (token !== this._loadToken) return // 已被更新的请求取代
         new GLTFLoader().parse(
           res.data,
           '',
           (gltf) => {
             wx.hideLoading()
+            if (token !== this._loadToken) return
             this._onModelLoaded(gltf)
           },
           (err) => {
             wx.hideLoading()
+            if (token !== this._loadToken) return
             this._fail('gltf 解析失败: ' + ((err && err.message) || err))
           }
         )
       },
       fail: (err) => {
         wx.hideLoading()
+        if (token !== this._loadToken) return
         this._fail('模型下载失败: ' + ((err && err.errMsg) || err))
       }
     })
@@ -194,6 +201,10 @@ class ThreeViewer {
   destroy() {
     this._running = false
     this._mixer = null
+    if (this._model) {
+      this._disposeModel(this._model)
+      this._model = null
+    }
     this._renderer.dispose()
   }
 
@@ -213,6 +224,13 @@ class ThreeViewer {
     model.scale.setScalar(scale)
     model.position.copy(center).multiplyScalar(-scale)
 
+    // 移除并释放上一个模型（几何体/材质/贴图），避免场景叠加和显存累积
+    if (this._model) {
+      this._scene.remove(this._model)
+      this._disposeModel(this._model)
+      this._model = null
+    }
+
     this._model = model
     // 环境反射强度 / 双面 / 去透射，按当前预设应用到材质
     const envIntensity = this._envIntensity
@@ -231,6 +249,22 @@ class ThreeViewer {
     if (this._onLoad) {
       this._onLoad({ animations: (gltf.animations || []).length })
     }
+  }
+
+  _disposeModel(model) {
+    model.traverse((obj) => {
+      if (obj.isMesh) {
+        if (obj.geometry) obj.geometry.dispose()
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material]
+        for (const m of mats) {
+          for (const key in m) {
+            const v = m[key]
+            if (v && v.isTexture) v.dispose()
+          }
+          m.dispose()
+        }
+      }
+    })
   }
 
   // ---- 触摸轨道手势：单指旋转（带惯性阻尼）、双指缩放 ----
