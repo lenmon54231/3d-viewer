@@ -26,6 +26,36 @@ Component({
     autoplay: {
       type: Boolean,
       value: true
+    },
+    // 光照布局：product（产品三点布光，默认）/ soft（半球柔光，适合建筑/大场景）
+    lightRig: {
+      type: String,
+      value: 'product',
+      observer() { this._applyPreset() }
+    },
+    // 曝光（默认 1.2），数值越大整体越亮
+    exposure: {
+      type: Number,
+      value: 1.2,
+      observer() { this._applyPreset() }
+    },
+    // 环境反射强度（默认 1.4），金属/光滑材质的关键
+    envIntensity: {
+      type: Number,
+      value: 1.4,
+      observer() { this._applyPreset() }
+    },
+    // 双面渲染：建筑/薄壁模型设为 true，内壁不穿帮
+    doubleSide: {
+      type: Boolean,
+      value: false,
+      observer() { this._applyPreset() }
+    },
+    // 实体质感：true 时把模型自带的透射（玻璃效果）归零
+    solid: {
+      type: Boolean,
+      value: false,
+      observer() { this._applyPreset() }
     }
   },
 
@@ -46,6 +76,11 @@ Component({
             src: this.data.src,
             background: this.data.background,
             autoplay: this.data.autoplay,
+            lightRig: this.data.lightRig,
+            exposure: this.data.exposure,
+            envIntensity: this.data.envIntensity,
+            doubleSide: this.data.doubleSide,
+            solid: this.data.solid,
             onLoad: (detail) => this.triggerEvent('load', detail),
             onError: (detail) => this.triggerEvent('error', detail)
           })
@@ -69,6 +104,18 @@ Component({
   },
 
   methods: {
+    // 预设属性变化时实时推给查看器核心（不重建渲染器）
+    _applyPreset() {
+      if (!this._viewer) return
+      this._viewer.setPreset({
+        lightRig: this.data.lightRig,
+        exposure: this.data.exposure,
+        envIntensity: this.data.envIntensity,
+        doubleSide: this.data.doubleSide,
+        solid: this.data.solid
+      })
+    },
+
     onTouchStart(e) {
       if (this._viewer) this._viewer.handleTouch('start', e)
     },

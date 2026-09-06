@@ -1,7 +1,23 @@
 <view class="page">
+  <view class="tabs">
+    <view
+      wx:for="{{ models }}"
+      wx:key="key"
+      class="tab {{ current === index ? 'tab-active' : '' }}"
+      data-index="{{ index }}"
+      bindtap="switchModel">{{ item.name }}</view>
+  </view>
+
   <three-viewer
     class="viewer"
-    src="{{ modelUrl }}"
+    src="{{ active.url }}"
+    background="{{ active.background }}"
+    light-rig="{{ active.lightRig }}"
+    exposure="{{ active.exposure }}"
+    env-intensity="{{ active.envIntensity }}"
+    double-side="{{ !!active.doubleSide }}"
+    solid="{{ !!active.solid }}"
+    autoplay="{{ false }}"
     bindload="onViewerLoad"
     binderror="onViewerError" />
 </view>

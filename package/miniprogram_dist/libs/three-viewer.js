@@ -15,6 +15,7 @@ class ThreeViewer {
    */
   constructor(canvas, options) {
     const opts = options || {}
+    this._opts = opts
     this._canvas = canvas
     this._onLoad = opts.onLoad || null
     this._onError = opts.onError || null
@@ -33,11 +34,12 @@ class ThreeViewer {
     renderer.setPixelRatio(win.pixelRatio || 1)
     renderer.setSize(width, height, false)
     renderer.toneMapping = THREE.ACESFilmicToneMapping
-    renderer.toneMappingExposure = 1.2
+    renderer.toneMappingExposure = opts.exposure || 1.2
 
     const scene = new THREE.Scene()
     scene.background = new THREE.Color(opts.background || 0x1a1c22)
     this._scene = scene
+    this._envIntensity = opts.envIntensity || 1.4
 
     // 环境反射（IBL）：金属/光滑材质真实感的来源
     try {
@@ -48,16 +50,12 @@ class ThreeViewer {
       console.warn('three-viewer: 环境贴图生成失败，回退基础光照', e && e.message)
       scene.add(new THREE.HemisphereLight(0xffffff, 0x444455, 1.0))
     }
-    // 产品级三点布光：主光 + 补光 + 轮廓光（rim 让金属边缘出现高光轮廓）
-    const keyLight = new THREE.DirectionalLight(0xffffff, 2.2)
-    keyLight.position.set(4, 6, 4)
-    scene.add(keyLight)
-    const fillLight = new THREE.DirectionalLight(0xffffff, 0.6)
-    fillLight.position.set(-5, 2, 3)
-    scene.add(fillLight)
-    const rimLight = new THREE.DirectionalLight(0xffffff, 1.6)
-    rimLight.position.set(-2, 5, -6)
-    scene.add(rimLight)
+
+    // 光照布局预设：
+    //  product —— 产品级三点布光（主光+补光+轮廓光），适合首饰/手表/工艺品等单品
+    //  soft    —— 半球环境光+柔和主光，适合建筑白模/大型场景等整体模型
+    this._lights = []
+    this._applyLightRig(opts.lightRig === 'soft' ? 'soft' : 'product', false)
 
     this._camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 100)
     this._target = new THREE.Vector3(0, 0, 0)
@@ -100,6 +98,69 @@ class ThreeViewer {
     if (this._scene) this._scene.background = new THREE.Color(color)
   }
 
+  // 动态切换渲染预设（组件属性变化时调用，无需重建渲染器）
+  setPreset(opts) {
+    Object.assign(this._opts, opts || {})
+    if (opts && opts.exposure !== undefined && this._renderer) {
+      this._renderer.toneMappingExposure = opts.exposure
+    }
+    if (opts && opts.envIntensity !== undefined) {
+      this._envIntensity = opts.envIntensity
+      this._eachMaterial((m) => { m.envMapIntensity = opts.envIntensity })
+    }
+    if (opts && opts.lightRig !== undefined) {
+      this._applyLightRig(opts.lightRig === 'soft' ? 'soft' : 'product', true)
+    }
+    if (opts && (opts.doubleSide !== undefined || opts.solid !== undefined)) {
+      this._reloadMaterialFlags()
+    }
+  }
+
+  _eachMaterial(fn) {
+    if (!this._model) return
+    this._model.traverse((obj) => {
+      if (obj.isMesh && obj.material) {
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material]
+        for (const m of mats) fn(m)
+      }
+    })
+  }
+
+  _reloadMaterialFlags() {
+    const opts = this._opts || {}
+    this._eachMaterial((m) => {
+      if (opts.doubleSide) m.side = THREE.DoubleSide
+      if (opts.solid && m.transmission !== undefined && m.transmission !== 0) {
+        m.transmission = 0
+        m.needsUpdate = true
+      }
+    })
+  }
+
+  _applyLightRig(kind, replace) {
+    if (replace && this._lights) {
+      for (const l of this._lights) this._scene.remove(l)
+    }
+    this._lights = []
+    const add = (l) => { this._lights.push(l); this._scene.add(l) }
+    if (kind === 'soft') {
+      add(new THREE.HemisphereLight(0xffffff, 0x666a75, 1.2))
+      const key = new THREE.DirectionalLight(0xffffff, 1.2)
+      key.position.set(4, 8, 5)
+      add(key)
+    } else {
+      const key = new THREE.DirectionalLight(0xffffff, 2.2)
+      key.position.set(4, 6, 4)
+      add(key)
+      const fill = new THREE.DirectionalLight(0xffffff, 0.6)
+      fill.position.set(-5, 2, 3)
+      add(fill)
+      const rim = new THREE.DirectionalLight(0xffffff, 1.6)
+      rim.position.set(-2, 5, -6)
+      add(rim)
+    }
+  }
+
   pause() {
     this._running = false
   }
@@ -118,7 +179,7 @@ class ThreeViewer {
         if (Math.abs(v.theta) > 0.00005 || Math.abs(v.phi) > 0.00005) {
           this._orbit.theta += v.theta
           this._orbit.phi = clamp(this._orbit.phi + v.phi, 0.15, Math.PI - 0.15)
-          const decay = Math.exp(-dt * 3.5)
+          const decay = Math.exp(-dt * 2.2)
           v.theta *= decay
           v.phi *= decay
           this.updateCamera()
@@ -152,12 +213,13 @@ class ThreeViewer {
     model.scale.setScalar(scale)
     model.position.copy(center).multiplyScalar(-scale)
 
-    // 金属材质真实感的关键：增强环境反射强度
-    model.traverse((obj) => {
-      if (obj.isMesh && obj.material && obj.material.isMeshStandardMaterial) {
-        obj.material.envMapIntensity = 1.4
-      }
+    this._model = model
+    // 环境反射强度 / 双面 / 去透射，按当前预设应用到材质
+    const envIntensity = this._envIntensity
+    this._eachMaterial((m) => {
+      if (m.isMeshStandardMaterial) m.envMapIntensity = envIntensity
     })
+    this._reloadMaterialFlags()
 
     this._scene.add(model)
 
@@ -190,8 +252,8 @@ class ThreeViewer {
         const dx = e.touches[0].clientX - this._last.x
         const dy = e.touches[0].clientY - this._last.y
         this._last = { x: e.touches[0].clientX, y: e.touches[0].clientY }
-        const dTheta = -dx * 0.008
-        const dPhi = clamp(-dy * 0.008, -0.3, 0.3)
+        const dTheta = -dx * 0.005
+        const dPhi = clamp(-dy * 0.005, -0.2, 0.2)
         this._orbit.theta += dTheta
         this._orbit.phi = clamp(this._orbit.phi + dPhi, 0.15, Math.PI - 0.15)
         this.updateCamera()
@@ -200,8 +262,8 @@ class ThreeViewer {
         const dtm = Math.max(16, now - this._lastMoveT)
         this._lastMoveT = now
         const frame = 16 / dtm
-        this._velocity.theta = 0.7 * this._velocity.theta + 0.3 * dTheta * frame
-        this._velocity.phi = 0.7 * this._velocity.phi + 0.3 * dPhi * frame
+        this._velocity.theta = clamp(0.7 * this._velocity.theta + 0.3 * dTheta * frame, -0.12, 0.12)
+        this._velocity.phi = clamp(0.7 * this._velocity.phi + 0.3 * dPhi * frame, -0.1, 0.1)
       } else if (this._gesture === 'pinch' && e.touches.length >= 2) {
         const d = this._touchDist(e.touches)
         if (this._lastPinch > 0 && d > 0) {
