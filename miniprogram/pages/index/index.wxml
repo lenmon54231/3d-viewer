@@ -1,0 +1,7 @@
+<view class="page">
+  <three-viewer
+    class="viewer"
+    src="{{ modelUrl }}"
+    bindload="onViewerLoad"
+    binderror="onViewerError" />
+</view>

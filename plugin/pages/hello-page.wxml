@@ -1,0 +1,9 @@
+<!--plugin/pages/hello-page.wxml-->
+<canvas
+  type="webgl"
+  id="webgl"
+  class="webgl"
+  bindtouchstart="onTouchStart"
+  bindtouchmove="onTouchMove"
+  bindtouchend="onTouchEnd"
+  bindtouchcancel="onTouchEnd"></canvas>

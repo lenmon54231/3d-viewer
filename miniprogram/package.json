@@ -1,0 +1,8 @@
+{
+  "name": "three-viewer-demo",
+  "version": "1.0.0",
+  "description": "miniprogram-three-viewer 宿主示例小程序",
+  "dependencies": {
+    "miniprogram-three-viewer": "file:../package"
+  }
+}

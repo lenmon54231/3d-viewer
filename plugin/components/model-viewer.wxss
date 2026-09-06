@@ -1,0 +1,12 @@
+/* plugin/components/model-viewer.wxss */
+:host {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.webgl {
+  width: 100%;
+  height: 100%;
+  display: block;
+}

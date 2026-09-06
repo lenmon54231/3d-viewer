@@ -1,0 +1,20 @@
+{
+  "name": "miniprogram-three-viewer",
+  "version": "0.2.0",
+  "description": "three.js r160 微信小程序 3D 模型查看器组件：glTF/GLB 加载、内嵌贴图、骨骼动画、PBR 环境光、单指旋转 / 双指缩放",
+  "miniprogram": "miniprogram_dist",
+  "main": "miniprogram_dist/index.js",
+  "files": [
+    "miniprogram_dist"
+  ],
+  "keywords": [
+    "miniprogram",
+    "wechat",
+    "three.js",
+    "3d",
+    "gltf",
+    "glb",
+    "viewer"
+  ],
+  "license": "MIT"
+}
